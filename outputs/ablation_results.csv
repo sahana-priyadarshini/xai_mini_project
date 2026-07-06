@@ -1,0 +1,6 @@
+Condition,Triples removed,Train Acc,Test Acc
+A: baseline (all predicates),0,0.9991,0.9979
+B: minus class-exclusive predicates (party/sport/team/genre/associatedBand/field),1530,0.9991,1.0
+C: minus ALL rdf:type triples,28876,0.7482,0.6292
+D: minus occupation predicate,163,0.9982,1.0
+E: minus rdf:type AND occupation,29039,0.7348,0.6521

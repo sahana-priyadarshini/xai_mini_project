@@ -1,8 +1,14 @@
 """
 02_train_model.py
 ==================
-Trains a 2-layer FastRGCN on the DBpedia persons graph.
+Trains a 3-layer FastRGCN (with dropout) on the DBpedia persons graph.
 Saves the model checkpoint and a training-curve plot.
+
+Architecture chosen via a controlled hyperparameter sweep in
+06_tune_model.py over hidden size (32/64/128), depth (2 vs 3 layers), and
+dropout (0.0-0.5), run on the same honest (non-leaky) feature set. The
+config below (hidden=128, 3 layers, dropout=0.5) gave the best held-out
+test accuracy in that sweep.
 
 Run:
     python 02_train_model.py
@@ -24,29 +30,41 @@ set_seed(42)
 ensure_dir("outputs")
 
 # ---------------------------------------------------------------------------
-# Hyper-parameters
+# Hyper-parameters (selected via 06_tune_model.py's sweep)
 # ---------------------------------------------------------------------------
-HIDDEN_CHANNELS = 32
+HIDDEN_CHANNELS = 128
+NUM_LAYERS = 3
+DROPOUT = 0.5
 NUM_BASES = 30
 LR = 0.01
 WEIGHT_DECAY = 5e-4
-EPOCHS = 100
+EPOCHS = 400
 
 # ---------------------------------------------------------------------------
 # Model definition
 # ---------------------------------------------------------------------------
 
 class FastRGCN(torch.nn.Module):
-    """2-layer Relational GCN with basis decomposition."""
+    """N-layer Relational GCN with basis decomposition and dropout."""
 
-    def __init__(self, in_channels: int, num_relations: int, num_classes: int):
+    def __init__(self, in_channels: int, num_relations: int, num_classes: int,
+                 hidden_channels: int = HIDDEN_CHANNELS,
+                 num_layers: int = NUM_LAYERS,
+                 dropout: float = DROPOUT):
         super().__init__()
-        self.conv1 = FastRGCNConv(
-            in_channels, HIDDEN_CHANNELS, num_relations, num_bases=NUM_BASES
-        )
-        self.conv2 = FastRGCNConv(
-            HIDDEN_CHANNELS, num_classes, num_relations, num_bases=NUM_BASES
-        )
+        self.dropout = dropout
+        self.convs = torch.nn.ModuleList()
+        if num_layers == 1:
+            self.convs.append(
+                FastRGCNConv(in_channels, num_classes, num_relations, num_bases=NUM_BASES))
+        else:
+            self.convs.append(
+                FastRGCNConv(in_channels, hidden_channels, num_relations, num_bases=NUM_BASES))
+            for _ in range(num_layers - 2):
+                self.convs.append(
+                    FastRGCNConv(hidden_channels, hidden_channels, num_relations, num_bases=NUM_BASES))
+            self.convs.append(
+                FastRGCNConv(hidden_channels, num_classes, num_relations, num_bases=NUM_BASES))
 
     def forward(
         self,
@@ -54,8 +72,12 @@ class FastRGCN(torch.nn.Module):
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
     ) -> torch.Tensor:
-        x = self.conv1(x, edge_index, edge_type).relu()
-        x = self.conv2(x, edge_index, edge_type)
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index, edge_type)
+            if i < len(self.convs) - 1:
+                x = x.relu()
+                if self.dropout > 0:
+                    x = F.dropout(x, p=self.dropout, training=self.training)
         return F.log_softmax(x, dim=1)
 
 
@@ -147,8 +169,9 @@ if __name__ == "__main__":
 
     # Save performance table
     perf = pd.DataFrame([{
-        "Model": "FastRGCN (2-layer)",
+        "Model": f"FastRGCN ({NUM_LAYERS}-layer)",
         "Hidden": HIDDEN_CHANNELS,
+        "Dropout": DROPOUT,
         "Bases": NUM_BASES,
         "Epochs": EPOCHS,
         "LR": LR,

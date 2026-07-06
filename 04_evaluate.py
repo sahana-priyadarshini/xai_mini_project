@@ -32,24 +32,43 @@ warnings.filterwarnings("ignore")
 set_seed(42)
 ensure_dir("outputs")
 
-HIDDEN_CHANNELS = 32
+HIDDEN_CHANNELS = 128
+NUM_LAYERS = 3
+DROPOUT = 0.5
 NUM_BASES = 30
 TOP_K = 6
 
 
 # ---------------------------------------------------------------------------
-# Model (same as before)
+# Model (identical architecture to 02_train_model.py, needed to load its
+# saved state_dict)
 # ---------------------------------------------------------------------------
 
 class FastRGCN(torch.nn.Module):
-    def __init__(self, in_channels, num_relations, num_classes):
+    def __init__(self, in_channels, num_relations, num_classes,
+                 hidden_channels=HIDDEN_CHANNELS, num_layers=NUM_LAYERS, dropout=DROPOUT):
         super().__init__()
-        self.conv1 = FastRGCNConv(in_channels, HIDDEN_CHANNELS, num_relations, num_bases=NUM_BASES)
-        self.conv2 = FastRGCNConv(HIDDEN_CHANNELS, num_classes, num_relations, num_bases=NUM_BASES)
+        self.dropout = dropout
+        self.convs = torch.nn.ModuleList()
+        if num_layers == 1:
+            self.convs.append(
+                FastRGCNConv(in_channels, num_classes, num_relations, num_bases=NUM_BASES))
+        else:
+            self.convs.append(
+                FastRGCNConv(in_channels, hidden_channels, num_relations, num_bases=NUM_BASES))
+            for _ in range(num_layers - 2):
+                self.convs.append(
+                    FastRGCNConv(hidden_channels, hidden_channels, num_relations, num_bases=NUM_BASES))
+            self.convs.append(
+                FastRGCNConv(hidden_channels, num_classes, num_relations, num_bases=NUM_BASES))
 
     def forward(self, x, edge_index, edge_type):
-        x = self.conv1(x, edge_index, edge_type).relu()
-        x = self.conv2(x, edge_index, edge_type)
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index, edge_type)
+            if i < len(self.convs) - 1:
+                x = x.relu()
+                if self.dropout > 0:
+                    x = F.dropout(x, p=self.dropout, training=self.training)
         return F.log_softmax(x, dim=1)
 
 

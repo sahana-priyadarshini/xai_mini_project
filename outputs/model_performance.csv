@@ -1,2 +1,2 @@
-Model,Hidden,Bases,Epochs,LR,Train Acc,Test Acc
-FastRGCN (2-layer),32,30,100,0.01,1.0,1.0
+Model,Hidden,Dropout,Bases,Epochs,LR,Train Acc,Test Acc
+FastRGCN (3-layer),128,0.5,30,400,0.01,0.8625,0.7375

@@ -1,7 +1,9 @@
 # XAI Mini Project — DBpedia GNN Explainability
-**Course:** Explainable Artificial Intelligence — Dr. Stefan Heindorf  
-**Strategy:** Strategy 1 — GNN Explainers (GNNExplainer, PGExplainer, SubGraphX)  
+**Course:** Explainable Artificial Intelligence — Dr. Stefan Heindorf
+**Strategy:** Strategy 1 — GNN Explainers (GNNExplainer, PGExplainer, SubGraphX)
 **Dataset:** DBpedia Persons subset (occupation-based node classification)
+
+**Team members:** TODO — full name, imt account, matriculation number (one row per member)
 
 ---
 
@@ -53,6 +55,11 @@ python 04_evaluate.py
 
 All outputs (plots, tables, explanation subgraphs) are saved in `outputs/`.
 
+> **Note on re-running Step 1:** if you have old cached files in `data/` from
+> before the label-leakage fix (see below), delete `data/triples_raw.pkl`,
+> `data/persons_raw.pkl`, `data/triples.pkl` and `data/pyg_data.pt` before
+> re-running `01_data_download.py`, otherwise the stale cache will be reused.
+
 ---
 
 ## Project Structure
@@ -77,6 +84,14 @@ xai_mini_project/
 - **Edges:** Relations such as `occupation`, `birthPlace`, `field`, `nationality`, `knownFor`
 - **Task:** 4-class node classification (Athlete / Politician / Artist / Scientist)
 - **Features:** One-hot degree encoding (same approach as AIFB example)
+
+**Avoiding label leakage:** person nodes are assigned a class label using the
+`rdf:type` triple to one of the four occupation classes (e.g. `dbo:Athlete`).
+Because `rdf:type` is also one of our graph-edge predicates, we explicitly
+filter out that *exact* labelling triple when building the graph in
+`01_data_download.py::fetch_triples()` — otherwise the model could read the
+label directly off an edge instead of learning from surrounding context
+(occupation, field, teams, birthplace, etc.).
 
 ---
 

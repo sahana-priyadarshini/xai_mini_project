@@ -1,0 +1,15 @@
+
+METRIC DEFINITIONS
+==================
+Fidelity+   The drop in prediction confidence when the top-k explanation
+            edges are REMOVED. Higher means those edges were truly important.
+
+Fidelity-   Prediction confidence when ONLY the top-k explanation edges
+            are retained. Higher means the explanation alone is sufficient.
+
+Sparsity    Fraction of total graph edges selected as explanation.
+            Lower = more concise (prefer small, focused explanations).
+
+Stability   Mean pairwise Jaccard similarity of top-k edge sets across
+            3 independent GNNExplainer runs (same node, different seeds).
+            Higher = more reproducible explanations.

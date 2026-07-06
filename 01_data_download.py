@@ -44,6 +44,18 @@ OCCUPATION_CLASSES = {
     "http://dbpedia.org/ontology/Artist":     2,
     "http://dbpedia.org/ontology/Scientist":  3,
 }
+# NOTE — rdf:type is deliberately EXCLUDED here.
+# We originally included it (filtering out only the exact 4 occupation
+# class URIs used as labels) but a controlled 5-condition ablation
+# (see 05_ablation.py) showed test accuracy drops from 99.79% to 62.92%
+# when ALL rdf:type triples are removed, vs. an essentially unchanged
+# accuracy when the 6 "class-exclusive" predicates below are removed.
+# This means DBpedia's OTHER rdf:type triples (YAGO/WordNet/Wikidata
+# subtypes such as yago:Politician110451863) were still near-duplicates
+# of the label even after we excluded the 4 exact class URIs — rdf:type
+# as a whole is simply too redundant with occupation to use as a feature
+# here. Dropping it entirely gives a lower but far more honest, non-leaky
+# accuracy and makes the resulting explanations meaningfully non-trivial.
 RELATION_PREDICATES = [
     "http://dbpedia.org/ontology/birthPlace",
     "http://dbpedia.org/ontology/nationality",
@@ -56,7 +68,21 @@ RELATION_PREDICATES = [
     "http://dbpedia.org/ontology/team",
     "http://dbpedia.org/ontology/influenced",
     "http://dbpedia.org/ontology/associatedBand",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+    # Added after the ablation study to legitimately add more relational
+    # signal without being tautologically tied to the occupation label
+    # (unlike rdf:type/occupation, these aren't defined per-class in
+    # DBpedia's schema; see 07_expand_predicates.py for the supplemental
+    # fetch used when these were added to an already-cached dataset).
+    "http://dbpedia.org/ontology/almaMater",
+    "http://dbpedia.org/ontology/award",
+    "http://dbpedia.org/ontology/spouse",
+    "http://dbpedia.org/ontology/child",
+    "http://dbpedia.org/ontology/parent",
+    "http://dbpedia.org/ontology/deathPlace",
+    "http://dbpedia.org/ontology/religion",
+    "http://dbpedia.org/ontology/restingPlace",
+    "http://dbpedia.org/ontology/residence",
+    "http://dbpedia.org/ontology/notableWork",
 ]
 HEADERS = {"Accept": "application/sparql-results+json"}
 TIMEOUT = 30  # seconds per request
@@ -124,14 +150,31 @@ def fetch_persons() -> dict[str, int]:
 # Step 2 — Fetch triples for all persons
 # ---------------------------------------------------------------------------
 def fetch_triples(persons: dict[str, int]) -> list[tuple[str, str, str]]:
-    """Return list of (subject, predicate, object) string triples."""
+    """Return list of (subject, predicate, object) string triples.
+
+    IMPORTANT — avoiding label leakage:
+    fetch_persons() assigns each person's class label using the exact triple
+    (person, rdf:type, <occupation class URI>), e.g. (dbr:LeBron_James,
+    rdf:type, dbo:Athlete). RELATION_PREDICATES also includes rdf:type
+    because a person's *other* types (e.g. dbo:Person, more specific
+    sub-types) are legitimately useful graph context. If we did not exclude
+    it, this exact labelling triple would be re-fetched here and added to
+    the graph as an edge — handing the model the answer directly instead of
+    making it learn from surrounding context (occupation, field, teams,
+    etc.). We therefore explicitly filter out (rdf:type, <label class URI>)
+    triples while keeping all other rdf:type triples.
+    """
     if os.path.exists(CACHE_TRIPLES):
         print("[data] Loading cached triples …")
         with open(CACHE_TRIPLES, "rb") as f:
             return pickle.load(f)
 
+    RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    label_class_uris = set(OCCUPATION_CLASSES.keys())
+
     uris = list(persons.keys())
     triples: list[tuple[str, str, str]] = []
+    dropped_leaky = 0
     batch_size = 50
 
     for i in range(0, len(uris), batch_size):
@@ -151,11 +194,19 @@ def fetch_triples(persons: dict[str, int]) -> list[tuple[str, str, str]]:
             s = row["s"]["value"]
             p = row["p"]["value"]
             o = row["o"]["value"]
+            # Drop the exact triple that defines the label (see docstring).
+            if p == RDF_TYPE and o in label_class_uris:
+                dropped_leaky += 1
+                continue
             triples.append((s, p, o))
 
         if (i // batch_size) % 5 == 0:
             pct = min(100, int(100 * i / len(uris)))
             print(f"  [triples] {pct}% — {len(triples)} triples so far …")
+
+    if dropped_leaky:
+        print(f"[data] Dropped {dropped_leaky} label-defining rdf:type triples "
+              f"to prevent leakage.")
 
     with open(CACHE_TRIPLES, "wb") as f:
         pickle.dump(triples, f)
@@ -257,8 +308,20 @@ def build_pyg_data(
     edge = edge[:, perm]
     edge_index, edge_type = edge[:2], edge[2]
 
-    # Node features: one-hot degree (capped at max_degree)
-    max_degree = min(4999, N - 1)
+    # Node features: one-hot degree.
+    # IMPORTANT: max_degree must NOT be assumed to equal N - 1. Because we
+    # add both a forward and an inverse edge per triple, a single "hub"
+    # object node (e.g. a common nationality/occupation-title resource
+    # referenced by hundreds of persons) can end up with an out-degree well
+    # above N - 1 via its inverse edges. Using N - 1 as the one-hot size
+    # works by chance on some graphs and crashes with an out-of-bounds
+    # index on others (e.g. after removing predicates in an ablation study,
+    # which shrinks N but not necessarily any individual hub's degree). We
+    # instead size the one-hot encoding to the ACTUAL maximum out-degree
+    # present in this graph (still capped at 4999 to bound feature width).
+    from torch_geometric.utils import degree as _degree
+    actual_max_degree = int(_degree(edge_index[0], num_nodes=N).max().item())
+    max_degree = min(4999, actual_max_degree)
     transform = T.OneHotDegree(max_degree=max_degree, cat=False)
     tmp = Data(edge_index=edge_index, num_nodes=N)
     tmp = transform(tmp)
