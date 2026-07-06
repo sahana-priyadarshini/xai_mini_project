@@ -3,7 +3,7 @@
 **Strategy:** Strategy 1 — GNN Explainers (GNNExplainer, PGExplainer, SubGraphX)
 **Dataset:** DBpedia Persons subset (occupation-based node classification)
 
-**Team members:** TODO — full name, imt account, matriculation number (one row per member)
+**Team members:** Isha Prakash Sojitra (4081880) & Sahana Priyadarshini Suresha (4081869)
 
 ---
 
