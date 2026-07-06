@@ -35,8 +35,19 @@ python -m ipykernel install --user --name xai26-mini --display-name "Python (xai
 
 ---
 
+
 ## Run Order
 
+**Single command (reproduces everything):**
+```bash
+conda activate xai26-mini
+python run_all.py
+```
+This runs data download → training → explanation → evaluation in sequence
+and stops immediately with a clear error if any step fails.
+
+**Individual steps** (equivalent to the above, useful for debugging one
+stage at a time):
 ```bash
 conda activate xai26-mini
 
@@ -52,7 +63,6 @@ python 03_explain.py
 # Step 4 — Evaluate explanations quantitatively
 python 04_evaluate.py
 ```
-
 All outputs (plots, tables, explanation subgraphs) are saved in `outputs/`.
 
 **Supplementary/diagnostic scripts** (not part of the main pipeline, kept
