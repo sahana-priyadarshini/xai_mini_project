@@ -10,4 +10,4 @@ SPARQLWrapper>=2.0.0
 captum>=0.7.0
 ipykernel
 jupyter
-tqdm
+tqdmnetworkx>=3.0
