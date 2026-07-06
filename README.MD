@@ -35,8 +35,19 @@ python -m ipykernel install --user --name xai26-mini --display-name "Python (xai
 
 ---
 
+
 ## Run Order
 
+**Single command (reproduces everything):**
+```bash
+conda activate xai26-mini
+python run_all.py
+```
+This runs data download → training → explanation → evaluation in sequence
+and stops immediately with a clear error if any step fails.
+
+**Individual steps** (equivalent to the above, useful for debugging one
+stage at a time):
 ```bash
 conda activate xai26-mini
 
@@ -52,15 +63,18 @@ python 03_explain.py
 # Step 4 — Evaluate explanations quantitatively
 python 04_evaluate.py
 ```
-
 All outputs (plots, tables, explanation subgraphs) are saved in `outputs/`.
 
-> **Note on re-running Step 1:** if you have old cached files in `data/` from
-> before the label-leakage fix (see below), delete `data/triples_raw.pkl`,
-> `data/persons_raw.pkl`, `data/triples.pkl` and `data/pyg_data.pt` before
-> re-running `01_data_download.py`, otherwise the stale cache will be reused.
-
----
+**Supplementary/diagnostic scripts** (not part of the main pipeline, kept
+for transparency — see the report for what each one found):
+- `05_ablation.py` — the controlled ablation study that found the
+  rdf:type label leakage.
+- `06_tune_model.py` — the hyperparameter sweep that selected the final
+  architecture.
+- `07_expand_predicates.py` — one-time helper used during development to
+  add new predicates to an already-cached dataset without a full
+  re-download; not needed on a fresh clone since `01_data_download.py`
+  already fetches the final predicate set directly.
 
 ## Project Structure
 ```
